@@ -1,0 +1,9 @@
+[project]
+name = "Wmata-Forecasting"
+version = "0.1.0"
+description = "Comparison of Forecasting Approaches for WMATA Metro Ridership"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+]
