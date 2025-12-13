@@ -6,13 +6,16 @@ def load_ridership():
     print("Loading ridership data...")
     df = pd.read_csv("Data/Entries_by_Year_Full_Data_data.csv")
 
-    # Ensure datetime
-    df["date_only"] = pd.to_datetime(df["Date"], format="%m/%d/%Y %I:%M:%S %p").dt.date
+    # Parse date and build hourly Datetime
+    df["date_only"] = pd.to_datetime(
+        df["Date"],
+        format="%m/%d/%Y %I:%M:%S %p"
+    ).dt.date
     df["Datetime"] = pd.to_datetime(df["date_only"].astype(str)) + pd.to_timedelta(df["Hour"].astype(int), unit="h")
 
-    # Keep only relevant columns
     keep_cols = [
         "Datetime",
+        "date_only",
         "Station Name",
         "Entries",
         "Exits",
@@ -27,7 +30,7 @@ def load_ridership():
     ]
     df = df[keep_cols].copy()
 
-    # Make some nicer feature names
+    # Nicer names
     df.rename(columns={
         "Station Name": "Station",
         "Day of Week": "DayOfWeek",
@@ -35,6 +38,7 @@ def load_ridership():
         "Time Period": "TimePeriod",
         "DAY_TYPE": "DayType",
     }, inplace=True)
+
     # binary holiday
     df["Holiday"] = (df["Holiday"].str.lower() == "yes").astype(int)
 
@@ -44,7 +48,43 @@ def load_ridership():
     df["Entries"] = df["Entries"].clip(lower=0)
     df["Entries"] = df["Entries"].fillna(0)
 
+    # 9 AM is in both AM Peak and Midday periods; collapse these into just AM Peak
+    # ------------------------------------------------------------------
+    mask_9 = df["Hour"] == 9
+
+    if mask_9.any():
+        df_9 = df[mask_9].copy()
+        df_not_9 = df[~mask_9].copy()
+
+        # Group by Station + date_only + Hour and sum Entries/Exits
+        grouped_9 = (
+            df_9
+            .groupby(["Station", "date_only", "Hour"], as_index=False)
+            .agg({
+                "Datetime": "first",
+                "Entries": "sum",
+                "Exits": "sum",
+                "DayOfWeek": "first",
+                "Holiday": "max",
+                "ServiceType": "first",
+                "Month": "first",
+                "DayType": "first",
+                "Year": "first",
+            })
+        )
+
+        # Force TimePeriod to AM Peak for these combined rows
+        grouped_9["TimePeriod"] = "AM Peak (Open-9:30am)"
+
+        cols_order = df.columns
+        df = pd.concat([df_not_9, grouped_9[cols_order]], ignore_index=True)
+
+    df = df.drop(columns=["date_only"])
+
+    print("Duplicates after collapse (Station + Datetime):", df.duplicated(subset=["Station", "Datetime"]).sum())
+
     return df
+
 
 def load_weather():
     w = pd.read_csv("Data/weather_hourly_dc.csv")
@@ -81,7 +121,6 @@ def print_dataframe_info(df: pd.DataFrame):
     print(df.head(20))
 
 if __name__ == "__main__":
-    # when you run: uv run src/data_prep.py
     merged = merge_ridership_weather()
     out_path = "Data/ridership_weather_merged.csv"
     merged.to_csv(out_path, index=False)

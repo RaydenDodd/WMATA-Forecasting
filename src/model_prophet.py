@@ -19,7 +19,7 @@ def train_prophet_for_station(df_station, extra_regressors):
     df_p = df_station.rename(columns={"Datetime": "ds"}).copy()
     df_p["y"] = np.log1p(df_p["Entries"])  # log(1 + Entries)
 
-    model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True,)
+    model = Prophet(daily_seasonality=True, weekly_seasonality=True, yearly_seasonality=True)
 
     for col in extra_regressors:
         model.add_regressor(col)
@@ -35,8 +35,8 @@ def make_prophet_forecast(model, df_future):
     forecast = model.predict(df_f)
 
     df_out = df_future.copy()
-    df_out["Entries_Pred_Prophet"] = np.expm1(forecast["yhat"].values)
-    df_out["Entries_Pred_Prophet"] = df_out["Entries_Pred_Prophet"].clip(lower=0)
+    df_out["Entries_Pred_prophet"] = np.expm1(forecast["yhat"].values)
+    df_out["Entries_Pred_prophet"] = df_out["Entries_Pred_prophet"].clip(lower=0)
     return df_out
 
 def fit_and_predict_one_station(df_train, df_test, regressors):
@@ -76,6 +76,9 @@ def add_prophet_predictions_all_stations(df_train, df_test, extra_regressors, us
 
     # Combine all stations back together
     df_test_with_preds = pd.concat(results, axis=0).sort_values(["Station", "Datetime"]).reset_index(drop=True)
+    # Save output
+    df_test_with_preds.to_csv("Models/prophet.csv", index=False)
+    print("\nSaved output to Models/prophet.csv")
     return df_test_with_preds
 
 def main():
@@ -112,7 +115,7 @@ def main():
 
     test_with_preds = fit_and_predict_one_station(train_one, test_one, extra_regressors)
 
-    evaluate_predictions(test_with_preds, "Entries_Pred_Prophet")
+    evaluate_predictions(test_with_preds, "Entries_Pred_prophet")
 
     # All Stations Predictions
     # -----------------------------------------------------------------------------
@@ -120,11 +123,7 @@ def main():
 
     df_pred = add_prophet_predictions_all_stations(train, test, extra_regressors=extra_regressors, use_covid_regressor=True,)
 
-    evaluate_predictions(df_pred, "Entries_Pred_Prophet")
-
-    # Save output for inspection
-    df_pred.to_csv("Data/prophet_insample_test.csv", index=False)
-    print("\nSaved output to Data/prophet_insample_test.csv")
+    evaluate_predictions(df_pred, "Entries_Pred_prophet")
 
 if __name__ == "__main__":
     main()

@@ -25,6 +25,9 @@ def baseline_ma_weeks(df, n_weeks=4):
 
     out = pd.concat(preds).reset_index()
     out = out.dropna(subset=[col_name])
+    out_path = f"Models/baseline_ma{n_weeks}w.csv"
+    out.to_csv(out_path, index=False)
+    print(f"\nSaved baseline predictions to {out_path}")
     return out, col_name
 
 def main():
@@ -34,7 +37,7 @@ def main():
     df["Datetime"] = pd.to_datetime(df["Datetime"])
 
     # Choose how many weeks to look back
-    n_weeks = 124
+    n_weeks = 64
     print(f"\nRunning {n_weeks}-week moving average baseline...")
     df_pred, pred_col = baseline_ma_weeks(df, n_weeks=n_weeks)
 
@@ -46,11 +49,6 @@ def main():
 
     print(f"\nTest rows for 2019: {len(test_2019)}")
     evaluate_predictions(test_2019, pred=pred_col)
-
-    out_path = f"Data/baseline_ma{n_weeks}w_2019.csv"
-    test_2019.to_csv(out_path, index=False)
-    print(f"\nSaved 2019 baseline predictions to {out_path}")
-
 
 if __name__ == "__main__":
     main()

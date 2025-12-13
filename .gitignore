@@ -1,4 +1,5 @@
-data/
+Data/
+Models/*.csv
 
 uv.lock
 *.pyc

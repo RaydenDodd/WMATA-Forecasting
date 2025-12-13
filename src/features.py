@@ -2,14 +2,33 @@
 import pandas as pd
 import numpy as np
 
-def train_val_test_split(df, train_end, val_end):
-    # train: <= train_end
-    train = df[df["datetime"] <= train_end].copy()
-    # val: (train_end, val_end]
-    val = df[(df["datetime"] > train_end) & (df["datetime"] <= val_end)].copy()
-    # test: > val_end
-    test = df[df["datetime"] > val_end].copy()
+def train_val_test_split(df, train_end, val_end, test_end=None):
+    df = df.copy()
+    df["Datetime"] = pd.to_datetime(df["Datetime"])
+
+    if test_end is None:
+        test_end = df["Datetime"].max()
+
+    train = df[df["Datetime"] <= train_end].copy()
+    val   = df[(df["Datetime"] > train_end) & (df["Datetime"] <= val_end)].copy()
+    test  = df[(df["Datetime"] > val_end) & (df["Datetime"] <= test_end)].copy()
+
     return train, val, test
+
+def print_split_info(train, val, test):
+    train_start = train["Datetime"].min()
+    train_end   = train["Datetime"].max()
+
+    val_start = val["Datetime"].min()
+    val_end   = val["Datetime"].max()
+
+    test_start = test["Datetime"].min()
+    test_end   = test["Datetime"].max()
+
+    print(f"Train: {len(train):,} rows: {train_start} - {train_end}")
+    print(f"Val:   {len(val):,} rows: {val_start} - {val_end}")
+    print(f"Test:  {len(test):,} rows: {test_start} - {test_end}")
+
 
 def add_weather_features(df):
     df = df.copy()

@@ -17,7 +17,6 @@ def mape(y_true, y_pred):
     return 100 * np.mean(np.abs((y_true[mask] - y_pred[mask]) / y_true[mask]))
 
 def evaluate_predictions(df_test, pred="Entries_Pred"):
-    # Calculate errors
     station_mae = mae(df_test["Entries"].values, df_test[pred].values)
     station_rmse = rmse(df_test["Entries"].values, df_test[pred].values)
     station_mape = mape(df_test["Entries"].values, df_test[pred].values)

@@ -1,27 +1,26 @@
 #src/model_lightgbm.py
+import os
 import pandas as pd
 import lightgbm as lgb
-from tqdm import tqdm
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import numpy as np
 import shap
 import matplotlib.pyplot as plt
 
-
-
 from features import add_weather_features, add_weekend_feature, add_hour_features, add_lag_and_rolling_features
 from evaluate import evaluate_predictions
 
-
-def train_lightgbm(train_df, val_df, feature_cols):
+def train_lightgbm(train_df, val_df, test_df, feature_cols):
     train_x = train_df[feature_cols]
     train_y = train_df["Entries"]
     val_x = val_df[feature_cols]
     val_y = val_df["Entries"]
+    test_x = test_df[feature_cols]
+    test_y = test_df["Entries"]
 
     cat_cols = [c for c in feature_cols if train_x[c].dtype == "object"]
 
-    for df_ in (train_x, val_x):
+    for df_ in (train_x, val_x, test_x):
         for c in cat_cols:
             df_[c] = df_[c].astype("category")
 
@@ -36,6 +35,7 @@ def train_lightgbm(train_df, val_df, feature_cols):
         "feature_fraction": 0.8,
         "bagging_fraction": 0.8,
         "bagging_freq": 1,
+        "force_row_wise": True
     }
 
     model = lgb.train(
@@ -49,14 +49,45 @@ def train_lightgbm(train_df, val_df, feature_cols):
         ],
     )
 
-    val_pred = model.predict(val_x, num_iteration=model.best_iteration)
-    val_pred = np.clip(val_pred, 0, None)
-    val_df["Entries_Pred_lgbm"] = val_pred
+    val_df = predict_lightgbm(model, val_df, feature_cols, "val")
+    test_df = predict_lightgbm(model, test_df, feature_cols, "test")
 
-    rmse = np.sqrt(mean_squared_error(val_y, val_pred))
-    mae = mean_absolute_error(val_y, val_pred)
-    return model, rmse, mae, val_df
+    mode_out_file = "Models/lightgbm_model.txt"
+    model.save_model(mode_out_file)
+    return model, val_df, test_df
 
+def predict_lightgbm(model, df, feature_cols, name="test"):
+    X = df[feature_cols]
+    for c in X.select_dtypes(include=["object"]).columns:
+        X[c] = X[c].astype("category")
+    preds = model.predict(X, num_iteration=model.best_iteration)
+    preds = np.clip(preds, 0, None)
+    df.loc[:, "Entries_Pred_lgbm"] = preds
+    out_file = f"Models/lightgbm_{name}_predictions.csv"
+    df.to_csv(out_file, index=False)
+    return df
+
+def save_lgb_plots(model, test_df, feature_cols,plots_dir="Plots", max_trees=10, max_features=20,shap_sample_size=1000):
+    os.makedirs(plots_dir, exist_ok=True)
+
+    for i in range(max_trees):
+        ax = lgb.plot_tree(model, tree_index=i, figsize=(20, 15))
+        plt.savefig(f"{plots_dir}/tree_{i}.png", dpi=300, bbox_inches="tight")
+        plt.close()
+
+    ax = lgb.plot_importance(model, max_num_features=max_features)
+    plt.savefig(f"{plots_dir}/feature_importance.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+    X_sample = test_df[feature_cols].copy()
+    X_sample = X_sample.sample(n=min(shap_sample_size, len(X_sample)),random_state=42)
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(X_sample)
+
+    shap.summary_plot(shap_values, X_sample, show=False)
+    plt.savefig(f"{plots_dir}/shap_summary.png", dpi=300, bbox_inches="tight")
+    plt.close()
 
 def main():
     print("Loading merged ridership + weather data...")
@@ -80,28 +111,11 @@ def main():
     # Test on 2019
     test = df[(df["Datetime"] >= "2019-01-01") & (df["Datetime"] <= "2019-12-31")]
 
-    model, rmse, mae, test_pred = train_lightgbm(train, test, feature_cols)
-    print(f"\nLightGBM Test RMSE: {rmse:.2f}, MAE: {mae:.2f}")
-    save_path = "Data/lightgbm_model.txt"
-    model.save_model(save_path)
-    print(f"Saved LightGBM model to {save_path}")
+    model, _, test_pred = train_lightgbm(train, test, test, feature_cols)
+
     evaluate_predictions(test_pred, pred="Entries_Pred_lgbm")
 
-    for i in range(10):
-        ax = lgb.plot_tree(model, tree_index=i, figsize=(20, 15))
-        plt.savefig(f"Plots/tree_{i}.png", dpi=300, bbox_inches="tight")
-        plt.close()
+    save_lgb_plots(model, test_pred, feature_cols)
 
-    ax = lgb.plot_importance(model, max_num_features=20)
-    plt.savefig("Plots/feature_importance.png", dpi=300, bbox_inches="tight")
-    plt.close()
-
-    X_sample = test[feature_cols].copy()
-    explainer = shap.TreeExplainer(model)
-    X_sample = X_sample.sample(n=min(1000, len(X_sample)), random_state=42)
-    shap_values = explainer.shap_values(X_sample)
-    shap.summary_plot(shap_values, X_sample, show=False)
-    plt.savefig("Plots/shap_summary.png", dpi=300, bbox_inches="tight")
-    plt.show()
 if __name__ == "__main__":
     main()
